@@ -34,13 +34,6 @@ int binarySearch(Student arr[], int size, int roll);
 
 void findMaxMin(Student arr[], int low, int high, int *maxIndex, int *minIndex);
 void createRollSortedCopy(Student students[], int count, Student copy[]);
-
-/*
- * Reads a whitespace-delimited token into a fixed STACK buffer (never
- * stored), then mallocs exactly enough heap space for that token and
- * copies it in. This is how name/department become dynamically sized
- * with only malloc/free - no realloc, no fixed-size struct fields.
- */
 char *readDynamicString(const char *prompt)
 {
     char temp[TEMP_BUF_SIZE];
@@ -64,14 +57,6 @@ char *readDynamicString(const char *prompt)
     strcpy(str, temp);
     return str;
 }
-
-/*
- * Reads an integer safely. If the user types something non-numeric,
- * scanf("%d", ...) would normally fail and leave the bad token stuck
- * in the input buffer, causing every later read (including the menu
- * choice) to fail forever. This clears that bad token and re-prompts
- * instead of hanging.
- */
 int readValidInt(const char *prompt)
 {
     int value;
@@ -104,8 +89,6 @@ float readValidMarks(void)
 
         if (scanf("%f", &marks) != 1)
         {
-            /* Non-numeric input: clear the bad token from the buffer
-               so it doesn't corrupt the next read, then re-ask. */
             int ch;
             while ((ch = getchar()) != '\n' && ch != EOF)
                 ;
