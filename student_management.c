@@ -3,37 +3,35 @@
 #include <string.h>
 #include <strings.h>
 
-#define MAX_STUDENTS 100
 #define TEMP_BUF_SIZE 256
 
 typedef struct
 {
     int roll;
     char *name;
-    char *department;
     int semester;
     float marks;
 } Student;
 
-void addStudent(Student students[], int *count);
+void addStudent(Student students[], int *count, int capacity);
 void displayStudents(Student students[], int count);
 void updateStudent(Student students[], int count);
 void deleteStudent(Student students[], int *count);
-void filterByDepartment(Student students[], int count);
 void freeAllStudents(Student students[], int count);
 
 int findStudentIndex(Student students[], int count);
+int isRollTaken(Student students[], int count, int roll, int excludeIndex);
 float readValidMarks(void);
 int readValidInt(const char *prompt);
 char *readDynamicString(const char *prompt);
 
-void mergeSort(Student arr[], int left, int right);
-void merge(Student arr[], int left, int mid, int right);
+void mergeSort(Student arr[], int left, int right, int choice);
+void merge(Student arr[], int left, int mid, int right, int choice);
 
 int binarySearch(Student arr[], int size, int roll);
 
 void findMaxMin(Student arr[], int low, int high, int *maxIndex, int *minIndex);
-void createRollSortedCopy(Student students[], int count, Student copy[]);
+
 char *readDynamicString(const char *prompt)
 {
     char temp[TEMP_BUF_SIZE];
@@ -57,6 +55,7 @@ char *readDynamicString(const char *prompt)
     strcpy(str, temp);
     return str;
 }
+
 int readValidInt(const char *prompt)
 {
     int value;
@@ -89,6 +88,8 @@ float readValidMarks(void)
 
         if (scanf("%f", &marks) != 1)
         {
+            /* Non-numeric input: clear the bad token from the buffer
+               so it doesn't corrupt the next read, then re-ask. */
             int ch;
             while ((ch = getchar()) != '\n' && ch != EOF)
                 ;
@@ -137,11 +138,53 @@ int findStudentIndex(Student students[], int count)
         printf("Enter Name: ");
         scanf("%255s", name);
 
+        int matchCount = 0;
+        int lastMatch = -1;
         for (int i = 0; i < count; i++)
         {
             if (strcasecmp(students[i].name, name) == 0)
-                return i;
+            {
+                matchCount++;
+                lastMatch = i;
+            }
         }
+
+        if (matchCount == 0)
+        {
+            return -1;
+        }
+
+        if (matchCount == 1)
+        {
+            return lastMatch;
+        }
+
+        /* More than one student has this name: don't guess which one
+           was meant. Show all of them (roll number is what actually
+           distinguishes them) and ask for the specific roll number. */
+        printf("\n%d Students Found With The Name '%s':\n", matchCount, name);
+        printf("Roll\tSem\tMarks\n");
+
+        for (int i = 0; i < count; i++)
+        {
+            if (strcasecmp(students[i].name, name) == 0)
+            {
+                printf("%d\t%d\t%.2f\n", students[i].roll, students[i].semester, students[i].marks);
+            }
+        }
+
+        int chosenRoll = readValidInt("Enter The Roll Number Of The Student You Mean: ");
+
+        for (int i = 0; i < count; i++)
+        {
+            if (strcasecmp(students[i].name, name) == 0 && students[i].roll == chosenRoll)
+            {
+                return i;
+            }
+        }
+
+        printf("No Student With That Name And Roll Number Combination Found.\n");
+        return -1;
     }
     else
     {
@@ -151,18 +194,43 @@ int findStudentIndex(Student students[], int count)
     return -1;
 }
 
-void addStudent(Student students[], int *count)
+int isRollTaken(Student students[], int count, int roll, int excludeIndex)
 {
-    if (*count >= MAX_STUDENTS)
+    for (int i = 0; i < count; i++)
+    {
+        if (i != excludeIndex && students[i].roll == roll)
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+void addStudent(Student students[], int *count, int capacity)
+{
+    if (*count >= capacity)
     {
         printf("Student List is Full\n");
         return;
     }
 
-    students[*count].roll = readValidInt("\nEnter Roll Number: ");
+    int roll;
+
+    do
+    {
+        roll = readValidInt("\nEnter Roll Number: ");
+
+        if (isRollTaken(students, *count, roll, -1))
+        {
+            printf("Roll Number Already Exists. Please Enter a Different One.\n");
+        }
+
+    } while (isRollTaken(students, *count, roll, -1));
+
+    students[*count].roll = roll;
 
     students[*count].name = readDynamicString("Enter Name: ");
-    students[*count].department = readDynamicString("Enter Department (e.g. CSE, IT): ");
 
     students[*count].semester = readValidInt("Enter Semester: ");
 
@@ -181,21 +249,20 @@ void displayStudents(Student students[], int count)
         return;
     }
 
-    printf("\n-------------------------------------------------------\n");
-    printf("Roll\tName\t\tDept\tSem\tMarks\n");
-    printf("-------------------------------------------------------\n");
+    printf("\n-------------------------------------------\n");
+    printf("Roll\tName\t\tSem\tMarks\n");
+    printf("-------------------------------------------\n");
 
     for (int i = 0; i < count; i++)
     {
-        printf("%d\t%s\t\t%s\t%d\t%.2f\n",
+        printf("%d\t%s\t\t%d\t%.2f\n",
                students[i].roll,
                students[i].name,
-               students[i].department,
                students[i].semester,
                students[i].marks);
     }
 
-    printf("-------------------------------------------------------\n");
+    printf("-------------------------------------------\n");
 }
 
 void updateStudent(Student students[], int count)
@@ -219,9 +286,8 @@ void updateStudent(Student students[], int count)
     printf("\nWhat Do You Want to Update?\n");
     printf("1. Name\n");
     printf("2. Roll Number\n");
-    printf("3. Department\n");
-    printf("4. Semester\n");
-    printf("5. Marks\n");
+    printf("3. Semester\n");
+    printf("4. Marks\n");
     fieldChoice = readValidInt("Enter Choice: ");
 
     switch (fieldChoice)
@@ -232,19 +298,29 @@ void updateStudent(Student students[], int count)
             break;
 
         case 2:
-            students[index].roll = readValidInt("Enter New Roll Number: ");
+        {
+            int newRoll;
+
+            do
+            {
+                newRoll = readValidInt("Enter New Roll Number: ");
+
+                if (isRollTaken(students, count, newRoll, index))
+                {
+                    printf("Roll Number Already Exists. Please Enter a Different One.\n");
+                }
+
+            } while (isRollTaken(students, count, newRoll, index));
+
+            students[index].roll = newRoll;
             break;
+        }
 
         case 3:
-            free(students[index].department);
-            students[index].department = readDynamicString("Enter New Department: ");
-            break;
-
-        case 4:
             students[index].semester = readValidInt("Enter New Semester: ");
             break;
 
-        case 5:
+        case 4:
             students[index].marks = readValidMarks();
             break;
 
@@ -263,89 +339,43 @@ void deleteStudent(Student students[], int *count)
         printf("No Records Found\n");
         return;
     }
-
     int index = findStudentIndex(students, *count);
-
     if (index == -1)
     {
         printf("Student Not Found\n");
         return;
     }
-
-    /* free this record's heap strings before it gets overwritten by the shift */
+    /* free this record's heap string before it gets overwritten by the shift */
     free(students[index].name);
-    free(students[index].department);
-
     for (int i = index; i < *count - 1; i++)
     {
         students[i] = students[i + 1];
     }
-
     (*count)--;
-
     printf("Student Deleted Successfully\n");
 }
 
-void filterByDepartment(Student students[], int count)
-{
-    if (count == 0)
-    {
-        printf("No Records Found\n");
-        return;
-    }
-
-    char department[TEMP_BUF_SIZE];
-
-    printf("Enter Department to Filter (e.g. CSE, IT): ");
-    scanf("%255s", department);
-
-    int found = 0;
-
-    printf("\n-------------------------------------------------------\n");
-    printf("Roll\tName\t\tDept\tSem\tMarks\n");
-    printf("-------------------------------------------------------\n");
-
-    for (int i = 0; i < count; i++)
-    {
-        if (strcasecmp(students[i].department, department) == 0)
-        {
-            printf("%d\t%s\t\t%s\t%d\t%.2f\n",
-                   students[i].roll,
-                   students[i].name,
-                   students[i].department,
-                   students[i].semester,
-                   students[i].marks);
-
-            found = 1;
-        }
-    }
-
-    printf("-------------------------------------------------------\n");
-
-    if (!found)
-    {
-        printf("No Students Found in %s Department\n", department);
-    }
-}
-
-/* Frees the heap-allocated name/department for every live record.
-   Call this once, right before freeing the students[] array itself. */
 void freeAllStudents(Student students[], int count)
 {
     for (int i = 0; i < count; i++)
     {
         free(students[i].name);
-        free(students[i].department);
     }
 }
 
-void merge(Student arr[], int left, int mid, int right)
+void merge(Student arr[], int left, int mid, int right, int choice)
 {
     int n1 = mid - left + 1;
     int n2 = right - mid;
 
-    Student L[MAX_STUDENTS];
-    Student R[MAX_STUDENTS];
+    Student *L = (Student *)malloc(n1 * sizeof(Student));
+    Student *R = (Student *)malloc(n2 * sizeof(Student));
+
+    if (L == NULL || R == NULL)
+    {
+        printf("Memory Allocation Failed\n");
+        exit(1);
+    }
 
     for (int i = 0; i < n1; i++)
         L[i] = arr[left + i];
@@ -353,64 +383,46 @@ void merge(Student arr[], int left, int mid, int right)
     for (int j = 0; j < n2; j++)
         R[j] = arr[mid + 1 + j];
 
-    int i = 0;
-    int j = 0;
-    int k = left;
+    int i = 0, j = 0, k = left;
 
     while (i < n1 && j < n2)
     {
-        if (L[i].marks >= R[j].marks)
+        if (choice == 1) 
         {
-            arr[k++] = L[i++];
+            if (L[i].marks >= R[j].marks)
+                arr[k++] = L[i++];
+            else
+                arr[k++] = R[j++];
         }
-        else
+        else if (choice == 2)
         {
-            arr[k++] = R[j++];
+            if (L[i].roll <= R[j].roll)
+                arr[k++] = L[i++];
+            else
+                arr[k++] = R[j++];
         }
     }
 
     while (i < n1)
-    {
         arr[k++] = L[i++];
-    }
 
     while (j < n2)
-    {
         arr[k++] = R[j++];
-    }
+
+    free(L);
+    free(R);
 }
 
-void mergeSort(Student arr[], int left, int right)
+void mergeSort(Student arr[], int left, int right, int choice)
 {
     if (left < right)
     {
         int mid = left + (right - left) / 2;
 
-        mergeSort(arr, left, mid);
-        mergeSort(arr, mid + 1, right);
+        mergeSort(arr, left, mid, choice);
+        mergeSort(arr, mid + 1, right, choice);
 
-        merge(arr, left, mid, right);
-    }
-}
-
-void createRollSortedCopy(Student students[], int count, Student copy[])
-{
-    for (int i = 0; i < count; i++)
-    {
-        copy[i] = students[i];
-    }
-
-    for (int i = 0; i < count - 1; i++)
-    {
-        for (int j = 0; j < count - i - 1; j++)
-        {
-            if (copy[j].roll > copy[j + 1].roll)
-            {
-                Student temp = copy[j];
-                copy[j] = copy[j + 1];
-                copy[j + 1] = temp;
-            }
-        }
+        merge(arr, left, mid, right, choice);
     }
 }
 
@@ -473,7 +485,15 @@ void findMaxMin(Student arr[], int low, int high, int *maxIndex, int *minIndex)
 
 int main()
 {
-    Student *students = (Student *)malloc(MAX_STUDENTS * sizeof(Student));
+    int capacity = readValidInt("Enter Maximum Number Of Students To Manage: ");
+
+    while (capacity <= 0)
+    {
+        printf("Capacity Must Be a Positive Number.\n");
+        capacity = readValidInt("Enter Maximum Number Of Students To Manage: ");
+    }
+
+    Student *students = (Student *)malloc(capacity * sizeof(Student));
 
     if (students == NULL)
     {
@@ -490,19 +510,18 @@ int main()
         printf("1. Add Student\n");
         printf("2. Display Students\n");
         printf("3. Sort By Marks\n");
-        printf("4. Filter By Department\n");
-        printf("5. Search By Roll Number\n");
-        printf("6. Find Topper and Lowest Scorer\n");
-        printf("7. Update Student\n");
-        printf("8. Delete Student\n");
-        printf("9. Exit\n");
+        printf("4. Search By Roll Number\n");
+        printf("5. Find Topper and Lowest Scorer\n");
+        printf("6. Update Student\n");
+        printf("7. Delete Student\n");
+        printf("8. Exit\n");
 
         choice = readValidInt("Enter Choice: ");
 
         switch (choice)
         {
             case 1:
-                addStudent(students, &count);
+                addStudent(students, &count, capacity);
                 break;
 
             case 2:
@@ -538,19 +557,19 @@ int main()
                         tempCopy[i] = students[i];
                     }
 
-                    mergeSort(tempCopy, 0, count - 1);
+                    mergeSort(tempCopy, 0, count - 1, 1);
 
                     printf("\nSorted View (Original Data Unchanged):\n");
                     displayStudents(tempCopy, count);
 
-                    /* tempCopy shares name/department pointers with the
-                       original array - free only the array, never the
-                       strings, or the original records get double-freed. */
+                    /* tempCopy shares name pointers with the original
+                       array - free only the array, never the strings,
+                       or the original records get double-freed. */
                     free(tempCopy);
                 }
                 else if (sortChoice == 2)
                 {
-                    mergeSort(students, 0, count - 1);
+                    mergeSort(students, 0, count - 1, 1);
 
                     printf("\nSorted and Saved Successfully:\n");
                     displayStudents(students, count);
@@ -564,10 +583,6 @@ int main()
             }
 
             case 4:
-                filterByDepartment(students, count);
-                break;
-
-            case 5:
             {
                 if (count == 0)
                 {
@@ -585,18 +600,21 @@ int main()
                     exit(1);
                 }
 
-                createRollSortedCopy(students, count, copy);
+                for (int i = 0; i < count; i++)
+                {
+                    copy[i] = students[i];
+                }
+                mergeSort(copy, 0, count - 1, 2);
 
                 int index = binarySearch(copy, count, roll);
 
                 if (index != -1)
                 {
                     printf("\nStudent Found\n");
-                    printf("Roll       : %d\n", copy[index].roll);
-                    printf("Name       : %s\n", copy[index].name);
-                    printf("Department : %s\n", copy[index].department);
-                    printf("Semester   : %d\n", copy[index].semester);
-                    printf("Marks      : %.2f\n", copy[index].marks);
+                    printf("Roll     : %d\n", copy[index].roll);
+                    printf("Name     : %s\n", copy[index].name);
+                    printf("Semester : %d\n", copy[index].semester);
+                    printf("Marks    : %.2f\n", copy[index].marks);
                 }
                 else
                 {
@@ -609,7 +627,7 @@ int main()
                 break;
             }
 
-            case 6:
+            case 5:
             {
                 if (count == 0)
                 {
@@ -631,15 +649,15 @@ int main()
                 break;
             }
 
-            case 7:
+            case 6:
                 updateStudent(students, count);
                 break;
 
-            case 8:
+            case 7:
                 deleteStudent(students, &count);
                 break;
 
-            case 9:
+            case 8:
                 printf("Exiting...\n");
                 break;
 
@@ -647,7 +665,7 @@ int main()
                 printf("Invalid Choice\n");
         }
 
-    } while (choice != 9);
+    } while (choice != 8);
 
     freeAllStudents(students, count);
     free(students);
